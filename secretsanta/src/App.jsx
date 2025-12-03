@@ -403,7 +403,7 @@ function App() {
             <div className="pick-form">
               <input
                 type="text"
-                placeholder="Enter your employee code (e.g., TCE062)..."
+                placeholder="Enter your employee code"
                 value={currentCode}
                 onChange={(e) => setCurrentCode(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
@@ -522,15 +522,6 @@ function App() {
               )}
             </div>
           </section>
-
-          {/* Reset Button */}
-          {Object.keys(assignedPairs).length > 0 && (
-            <section className="section">
-              <button onClick={resetAll} className="btn btn-danger">
-                Reset All Assignments
-              </button>
-            </section>
-          )}
         </div>
     </div>
   )
