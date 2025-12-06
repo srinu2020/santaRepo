@@ -79,3 +79,4 @@ Open http://localhost:5173 in your browser
 - **CORS errors**: Backend has CORS enabled by default
 - **API not found**: Check that backend is running on port 3001
 
+

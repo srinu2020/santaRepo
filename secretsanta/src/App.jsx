@@ -79,7 +79,8 @@ function App() {
           setResult(null)
         }
       } catch (err) {
-        // If 404, no assignment yet – clear any previous result
+        // If 404, no assignment as a giver yet – clear any previous result
+        // Note: Even if they are a receiver, they can still log in and spin
         if (err.response?.status === 404) {
           setResult(null)
         } else {
@@ -118,7 +119,7 @@ function App() {
       return
     }
 
-    // Optional: Check if someone already used this code and show their assignment
+    // Check if someone already used this code as a giver and show their assignment
     try {
       const assignmentData = await assignmentAPI.getByEmployeeCode(matchedEmployee.code)
       if (assignmentData.hasAssignment) {
@@ -131,7 +132,7 @@ function App() {
         // Still allow them to "log in" so they can see their result again
       }
     } catch (err) {
-      // If 404, no assignment exists yet – continue
+      // If 404, no assignment exists yet – continue (they can still log in and spin)
       if (err.response?.status !== 404) {
         toast.error('Failed to verify employee code. Please try again.', {
           position: "top-center",
@@ -189,7 +190,7 @@ function App() {
     const matchedEmployee = loggedInEmployee
     const exactCode = loggedInEmployee.code
     
-    // Check if this employee code already has an assignment (fetch from API)
+    // Check if this employee code already has an assignment as a giver (fetch from API)
     try {
       const assignmentData = await assignmentAPI.getByEmployeeCode(exactCode)
       if (assignmentData.hasAssignment) {
@@ -203,7 +204,8 @@ function App() {
         return
       }
     } catch (err) {
-      // If 404, no assignment exists, continue with spinning
+      // If 404, no assignment exists as a giver, continue with spinning
+      // Note: Even if they are a receiver, they can still spin to become a giver
       if (err.response?.status !== 404) {
         toast.error('Failed to check assignment. Please try again.', {
           position: "top-center",
@@ -262,13 +264,25 @@ function App() {
           // Save the assignment to backend
           assignmentAPI.create(exactCode, selectedReceiver.code)
             .then((response) => {
-              // Create assignment object
-              const assignmentResult = { 
+              console.log('Assignment API response:', response);
+              
+              // Use the assignment from the backend response if available, otherwise use local data
+              const assignmentData = response.data?.assignment || response.assignment || {
                 giverCode: exactCode,
                 giverName: matchedEmployee.name,
                 receiverCode: selectedReceiver.code,
                 receiverName: selectedReceiver.name
-              }
+              };
+              
+              const assignmentResult = {
+                giverCode: assignmentData.giverCode || exactCode,
+                giverName: assignmentData.giverName || matchedEmployee.name,
+                receiverCode: assignmentData.receiverCode || selectedReceiver.code,
+                receiverName: assignmentData.receiverName || selectedReceiver.name
+              };
+              
+              console.log('Assignment result:', assignmentResult);
+              
               // Keep the employee code in the input field
               setCurrentCode(exactCode)
               
@@ -276,14 +290,14 @@ function App() {
               const newPairs = { 
                 ...assignedPairs, 
                 [exactCode]: {
-                  receiverCode: selectedReceiver.code,
-                  receiverName: selectedReceiver.name
+                  receiverCode: assignmentResult.receiverCode,
+                  receiverName: assignmentResult.receiverName
                 }
               }
               setAssignedPairs(newPairs)
               
               // Show success toast
-              toast.success(`🎉 Success! You are assigned to gift: ${selectedReceiver.name}`, {
+              toast.success(`🎉 Success! You are assigned to gift: ${assignmentResult.receiverName}`, {
                 position: "top-center",
                 autoClose: 5000,
               })
@@ -301,19 +315,45 @@ function App() {
             })
             .catch((err) => {
               setIsSpinning(false)
-              const errorMsg = err.response?.data?.error || 'Failed to save assignment. Please try again.'
+              console.error('Assignment creation error:', err);
+              console.error('Error response:', err.response);
+              
+              const errorMsg = err.response?.data?.error || err.message || 'Failed to save assignment. Please try again.'
               
               // Check for specific error types
-              if (errorMsg.includes('already has an assignment')) {
-                toast.warning('This employee code already has an assignment. Please use your own code.', {
+              if (errorMsg.includes('already has an assignment') || errorMsg.includes('already been assigned')) {
+                // If there's an existing assignment in the response, show it
+                if (err.response?.data?.assignment) {
+                  const existingAssignment = err.response.data.assignment;
+                  setResult({
+                    giverCode: existingAssignment.giverCode,
+                    giverName: existingAssignment.giverName,
+                    receiverCode: existingAssignment.receiverCode,
+                    receiverName: existingAssignment.receiverName
+                  });
+                  toast.warning(`You already have an assignment! You are assigned to gift: ${existingAssignment.receiverName}`, {
+                    position: "top-center",
+                    autoClose: 5000,
+                  });
+                } else {
+                  toast.warning('This employee code already has an assignment. Please use your own code.', {
+                    position: "top-center",
+                    autoClose: 5000,
+                  });
+                }
+              } else if (errorMsg.includes('receiver has already been assigned') || errorMsg.includes('already been assigned as a receiver')) {
+                // Race condition: the selected receiver was assigned between the available check and assignment creation
+                toast.error('The selected person was just assigned to someone else. Please try spinning again to get a different person.', {
                   position: "top-center",
                   autoClose: 5000,
-                })
+                });
+                // Don't stop spinning state immediately - let user try again
+                setIsSpinning(false);
               } else {
                 toast.error(errorMsg, {
                   position: "top-center",
                   autoClose: 4000,
-                })
+                });
               }
             })
         }
